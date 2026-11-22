@@ -1,0 +1,45 @@
+name: Build Waterfisic
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descompactar o projeto (qualquer zip)
+        run: |
+          ls -la
+          for z in *.zip; do unzip -q -o "$z"; done
+          PROJ=$(dirname "$(find . -maxdepth 2 -name build.gradle | head -1)")
+          echo "Projeto encontrado em: $PROJ"
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Build
+        working-directory: ${{ env.PROJ }}
+        run: |
+          gradle build --no-daemon --console=plain > build.log 2>&1 && code=0 || code=$?
+          if [ "$code" -ne 0 ]; then
+            errs=$(grep -A2 'error:' build.log | head -40)
+            if [ -z "$errs" ]; then errs=$(tail -40 build.log); fi
+            msg=$(printf '%s\n' "$errs" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Erros do Java::$msg"
+          fi
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waterfisic-jar
+          path: ${{ env.PROJ }}/build/libs/*-1.0.0.jar
